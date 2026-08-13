@@ -1,0 +1,37 @@
+services:
+  payment-service-payment-mongodb:
+    image: mongo:8.0
+    container_name: mongodb_container
+    ports:
+      - "${PAYMENT_SERVICE_MONGO_DB_PORT}:27017"
+    environment:
+      MONGO_INITDB_DATABASE: ${PAYMENT_SERVICE_MONGO_DB_NAME}
+      MONGO_INITDB_ROOT_USERNAME: ${PAYMENT_SERVICE_MONGO_DB_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${PAYMENT_SERVICE_MONGO_DB_PASSWORD}
+    volumes:
+      - payment_service_payment_mongo_data:/data/db
+
+  mongo-express:
+    image: mongo-express:latest
+    container_name: mongo_express_container
+    ports:
+      - "8091:8081"
+    environment:
+      ME_CONFIG_OPTIONS_EDITORTHEME: "ambiance"
+      ME_CONFIG_MONGODB_ENABLE_ADMIN: "true"
+
+      ME_CONFIG_MONGODB_SERVER: payment-service-payment-mongodb
+      ME_CONFIG_MONGODB_PORT: 27017
+
+      ME_CONFIG_MONGODB_ADMINUSERNAME: ${PAYMENT_SERVICE_MONGO_DB_USERNAME}
+      ME_CONFIG_MONGODB_ADMINPASSWORD: ${PAYMENT_SERVICE_MONGO_DB_PASSWORD}
+
+      ME_CONFIG_BASICAUTH_USERNAME: ${PAYMENT_SERVICE_MONGO_DB_USERNAME}
+      ME_CONFIG_BASICAUTH_PASSWORD: ${PAYMENT_SERVICE_MONGO_DB_PASSWORD}
+    depends_on:
+      - payment-service-payment-mongodb
+    links:
+      - payment-service-payment-mongodb:mongo
+
+volumes:
+  payment_service_payment_mongo_data:
