@@ -2,7 +2,6 @@ package by.shakhau.ps.payment.client;
 
 import by.shakhau.ps.payment.client.dto.PaymentRequest;
 import by.shakhau.ps.payment.client.dto.PaymentStatus;
-import by.shakhau.ps.payment.config.FeignConditionalConfig;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.PostMapping;
 
