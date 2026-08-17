@@ -11,6 +11,7 @@ services:
     volumes:
       - payment_service_payment_mongo_data:/data/db
 
+
   mongo-express:
     image: mongo-express:latest
     container_name: mongo_express_container
@@ -32,6 +33,25 @@ services:
       - payment-service-payment-mongodb
     links:
       - payment-service-payment-mongodb:mongo
+
+
+  payment-system-payment-service:
+    image: ghcr.io/yuryshakhau1/payment-system-payment-service:latest
+    container_name: payment_system_order_service
+    profiles:
+      - docker
+    ports:
+      - "${PAYMENT_SERVICE_PORT}:${PAYMENT_SERVICE_PORT}"
+    environment:
+      - PAYMENT_SERVICE_PORT=${PAYMENT_SERVICE_PORT}
+      - PAYMENT_SERVICE_MONGO_DB_NAME=${PAYMENT_SERVICE_MONGO_DB_NAME}
+      - PAYMENT_SERVICE_MONGO_DB_USERNAME=${PAYMENT_SERVICE_MONGO_DB_USERNAME}
+      - PAYMENT_SERVICE_MONGO_DB_PASSWORD=${PAYMENT_SERVICE_MONGO_DB_PASSWORD}
+      - PAYMENT_SERVICE_MONGO_DB_PORT=${PAYMENT_SERVICE_MONGO_DB_PORT}
+      - FAKE_BANK_PORT=${FAKE_BANK_PORT}
+    depends_on:
+      - payment-service-payment-mongodb
+
 
 volumes:
   payment_service_payment_mongo_data:
