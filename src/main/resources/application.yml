@@ -17,3 +17,9 @@ spring:
 
   config:
     import: optional:file:../.env[.properties]
+
+crypto:
+  card-secret-key: ${CARD_SECRET_KEY}
+
+app:
+  fake-bank-url: ${FAKE_BANK_URL}:${FAKE_BANK_PORT}
