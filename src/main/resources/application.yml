@@ -22,4 +22,4 @@ crypto:
   card-secret-key: ${CARD_SECRET_KEY}
 
 app:
-  fake-bank-url: ${FAKE_BANK_URL}:${FAKE_BANK_PORT}
+  fake-bank-url: ${EXTERNAL_BANK_URL}:${EXTERNAL_BANK_PORT}

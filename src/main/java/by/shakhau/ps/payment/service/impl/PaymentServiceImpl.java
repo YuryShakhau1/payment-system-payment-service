@@ -8,6 +8,8 @@ import by.shakhau.ps.payment.service.PaymentService;
 import by.shakhau.ps.payment.service.mapper.PaymentMapper;
 import by.shakhau.ps.payment.service.model.Payment;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Slice;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -43,7 +45,7 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     @Override
-    public List<AdminSumProjection> getTotalSumForAllUsers(Instant from, Instant to) {
-        return repository.getTotalSumForAllUsers(from, to);
+    public Slice<AdminSumProjection> getTotalSumForAllUsers(Instant from, Instant to, Pageable pageable) {
+        return repository.getTotalSumForAllUsers(from, to, pageable);
     }
 }
