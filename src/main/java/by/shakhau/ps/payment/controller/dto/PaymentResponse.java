@@ -1,7 +1,6 @@
 package by.shakhau.ps.payment.controller.dto;
 
 import by.shakhau.ps.payment.repository.entity.PaymentStatus;
-import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
 
