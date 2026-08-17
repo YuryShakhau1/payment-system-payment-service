@@ -1,0 +1,7 @@
+server:
+  port: ${PAYMENT_SERVICE_PORT}
+
+spring:
+  config:
+    activate:
+      on-profile: local
