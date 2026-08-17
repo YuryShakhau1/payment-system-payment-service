@@ -4,6 +4,8 @@ import by.shakhau.ps.payment.controller.filter.AuthenticationFilter;
 import by.shakhau.ps.payment.repository.PaymentRepository;
 import by.shakhau.ps.payment.repository.entity.PaymentEntity;
 import by.shakhau.ps.payment.repository.entity.PaymentStatus;
+import com.github.dockerjava.api.model.ExposedPort;
+import com.github.dockerjava.api.model.Ports;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,11 +14,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
 import org.springframework.test.annotation.DirtiesContext;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
-import org.testcontainers.containers.MongoDBContainer;
-import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.math.BigDecimal;
@@ -41,16 +40,15 @@ class PaymentControllerIT {
     @Autowired
     private PaymentRepository paymentRepository;
 
-    @Container
-    private static final MongoDBContainer mongoDB = new MongoDBContainer("mongo:8.0");
+    private static final GenericContainer<?> mongoDB = new GenericContainer<>("mongo:8.0")
+            .withEnv("MONGO_INITDB_ROOT_USERNAME", "db_username")
+            .withEnv("MONGO_INITDB_ROOT_PASSWORD", "db_password")
+            .withCreateContainerCmdModifier(cmd -> cmd.getHostConfig().withPortBindings(
+                    new Ports(new ExposedPort(27017), Ports.Binding.bindPort(27017))
+            ));
 
     static {
         mongoDB.start();
-    }
-
-    @DynamicPropertySource
-    static void setMongoProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.data.mongodb.uri", mongoDB::getReplicaSetUrl);
     }
 
     private UUID userId;
@@ -113,7 +111,7 @@ class PaymentControllerIT {
                 .paymentAmount(BigDecimal.valueOf(300.00))
                 .build();
 
-        paymentRepository.saveAll(java.util.List.of(payment, otherPayment));
+        paymentRepository.saveAll(List.of(payment, otherPayment));
 
         mockMvc.perform(get("/payments/me")
                         .param("status", PaymentStatus.getBeginStatus().name())

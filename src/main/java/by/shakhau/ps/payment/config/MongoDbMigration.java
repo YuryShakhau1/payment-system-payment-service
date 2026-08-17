@@ -22,7 +22,7 @@ public class MongoDbMigration {
                 .openDatabase(liquibaseProperties.getUrl(), liquibaseProperties.getUser(), liquibaseProperties.getPassword(), null, null)) {
 
             try (var liquibase = new Liquibase(liquibaseProperties.getChangeLog(), new ClassLoaderResourceAccessor(), database)) {
-                liquibase.update("");
+                liquibase.update();
             }
         }
     }
