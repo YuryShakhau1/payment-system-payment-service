@@ -3,7 +3,11 @@ package by.shakhau.ps.payment;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.autoconfigure.liquibase.LiquibaseAutoConfiguration;
+import org.springframework.cloud.openfeign.EnableFeignClients;
+import org.springframework.retry.annotation.EnableRetry;
 
+@EnableRetry
+@EnableFeignClients
 @SpringBootApplication(exclude = LiquibaseAutoConfiguration.class)
 public class PaymentServiceApplication {
 

@@ -1,13 +1,25 @@
 spring:
   liquibase:
     change-log: db/changelog/db.changelog-master.yml
-    url: mongodb://${spring.data.mongodb.host}:${spring.data.mongodb.port}/${spring.data.mongodb.database}}?authSource=admin
-    user: ${spring.data.mongodb.username}
-    password: ${spring.data.mongodb.password}
+    url: mongodb://${PAYMENT_SERVICE_MONGO_DB_HOST}:${PAYMENT_SERVICE_MONGO_DB_PORT}/${PAYMENT_SERVICE_MONGO_DB_NAME}?authSource=admin
+    user: ${PAYMENT_SERVICE_MONGO_DB_USERNAME}
+    password: ${PAYMENT_SERVICE_MONGO_DB_PASSWORD}
     enabled: true
 
+  kafka:
+    bootstrap-servers: ${KAFKA_HOST_PORT}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    listener:
+      ack-mode: manual_immediate
+      immediate-stop: true
+
   config:
-    import: optional:file:../.env[.properties]
+    import: optional:file:.env[.properties]
 
 crypto:
   card-secret-key: ${CARD_SECRET_KEY}
@@ -23,3 +35,6 @@ management:
     web:
       exposure:
         include: health,info
+
+app:
+  user-service-url: ${USER_SERVICE_URL}

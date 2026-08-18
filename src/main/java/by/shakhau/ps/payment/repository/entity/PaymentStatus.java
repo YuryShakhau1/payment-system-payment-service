@@ -11,11 +11,9 @@ import java.util.stream.Collectors;
 @Getter
 public enum PaymentStatus {
 
-    NEW(0),
-    PENDING(1),
-    SUCCESS(2),
-    FAILED(3),
-    REFUNDED(4);
+    PENDING(0),
+    SUCCESS(1),
+    FAILED(2);
 
     private final int value;
 
@@ -27,6 +25,6 @@ public enum PaymentStatus {
     }
 
     public static PaymentStatus getBeginStatus() {
-        return NEW;
+        return PENDING;
     }
 }

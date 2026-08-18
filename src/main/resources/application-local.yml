@@ -2,6 +2,10 @@ server:
   port: ${PAYMENT_SERVICE_PORT}
 
 spring:
+  config:
+    activate:
+      on-profile: local
+
   data:
     mongodb:
       host: localhost
@@ -11,9 +15,5 @@ spring:
       password: ${PAYMENT_SERVICE_MONGO_DB_PASSWORD}
       authentication-database: admin
 
-  config:
-    activate:
-      on-profile: docker
-
 app:
-  fake-bank-url: http://localhost:${EXTERNAL_BANK_PORT}
+  fake-bank-url: ${EXTERNAL_BANK_HOST}:${EXTERNAL_BANK_PORT}

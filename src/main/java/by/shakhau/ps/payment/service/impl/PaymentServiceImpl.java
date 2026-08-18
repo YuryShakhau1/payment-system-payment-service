@@ -1,14 +1,17 @@
 package by.shakhau.ps.payment.service.impl;
 
+import by.shakhau.ps.payment.exception.ResourceNotFoundException;
 import by.shakhau.ps.payment.repository.PaymentRepository;
-import by.shakhau.ps.payment.repository.entity.AdminSumProjection;
 import by.shakhau.ps.payment.repository.entity.PaymentEntity;
 import by.shakhau.ps.payment.repository.entity.PaymentStatus;
 import by.shakhau.ps.payment.repository.entity.UserSumProjection;
 import by.shakhau.ps.payment.service.PaymentService;
+import by.shakhau.ps.payment.service.UserService;
 import by.shakhau.ps.payment.service.mapper.PaymentMapper;
 import by.shakhau.ps.payment.service.model.Payment;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Slice;
 import org.springframework.data.domain.SliceImpl;
@@ -29,6 +32,7 @@ public class PaymentServiceImpl implements PaymentService {
 
     private final PaymentMapper mapper;
     private final PaymentRepository repository;
+    private final UserService userService;
     private final MongoTemplate mongoTemplate;
 
     @Override
@@ -41,58 +45,96 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     @Override
-    public List<Payment> findByCriteria(UUID userId, UUID orderId, PaymentStatus status) {
+    public void update(Payment payment) {
+        repository.save(mapper.toEntity(payment));
+    }
+
+    @Override
+    public Payment findById(UUID id) {
+        return repository.findById(id)
+                .map(mapper::toModel)
+                .map(this::fillUser)
+                .orElseThrow(() -> new ResourceNotFoundException("Payment not found"));
+    }
+
+    @Override
+    public Payment findByUserIdAndId(UUID userId, UUID id) {
+        return repository.findByUserIdAndId(userId, id)
+                .map(mapper::toModel)
+                .map(this::fillUser)
+                .orElseThrow(() -> new ResourceNotFoundException("Payment not found"));
+    }
+
+    @Override
+    public Page<Payment> findByCriteria(
+            Instant from, Instant to,
+            UUID userId, UUID orderId, PaymentStatus status, Pageable pageable) {
         Query query = new Query();
         List<Criteria> criteriaList = new java.util.ArrayList<>();
 
+        if (from != null && to != null) {
+            criteriaList.add(Criteria.where("created_at").gte(from).lte(to));
+        } else {
+            if (from != null) {
+                criteriaList.add(Criteria.where("created_at").gte(from));
+            }
+            if (to != null) {
+                criteriaList.add(Criteria.where("created_at").lte(to));
+            }
+        }
+
         if (userId != null) {
-            criteriaList.add(Criteria.where("userId").is(userId));
+            criteriaList.add(Criteria.where("user_id").is(userId));
         }
         if (orderId != null) {
-            criteriaList.add(Criteria.where("orderId").is(orderId));
+            criteriaList.add(Criteria.where("order_id").is(orderId));
         }
         if (status != null) {
             criteriaList.add(Criteria.where("status").is(status));
         }
 
         if (!criteriaList.isEmpty()) {
-            query.addCriteria(new Criteria().orOperator(criteriaList.toArray(new Criteria[0])));
+            query.addCriteria(new Criteria().andOperator(criteriaList.toArray(new Criteria[0])));
         }
 
-        return mongoTemplate.find(query, PaymentEntity.class).stream()
+        long total = mongoTemplate.count(query, PaymentEntity.class);
+        query.with(pageable);
+
+        List<Payment> payments = mongoTemplate.find(query, PaymentEntity.class)
+                .stream()
                 .map(mapper::toModel)
+                .map(this::fillUser)
                 .toList();
+
+        return new PageImpl<>(payments, pageable, total);
     }
 
     @Override
-    public List<UserSumProjection> getUserTotalSum(UUID userId, Instant from, Instant to) {
-        var matchStage = Aggregation.match(
-                Criteria.where("userId").is(userId).and("createdAt").gte(from).lte(to));
+    public Page<UserSumProjection> getTotalSum(
+            Instant from, Instant to, UUID userId, PaymentStatus status, Pageable pageable) {
+        Criteria criteria = Criteria.where("createdAt").gte(from).lte(to);
+        if (userId != null) {
+            criteria.and("userId").is(userId);
+        }
+        if (status != null) {
+            criteria.and("status").is(status);
+        }
 
-        var groupStage = Aggregation.group().sum("paymentAmount").as("total");
-
-        Aggregation aggregation = Aggregation.newAggregation(matchStage, groupStage);
-
-        AggregationResults<UserSumProjection> results = mongoTemplate.aggregate(
-                aggregation,
-                PaymentEntity.class,
-                UserSumProjection.class);
-
-        return results.getMappedResults();
-    }
-
-    @Override
-    public Slice<AdminSumProjection> getTotalSumForAllUsers(Instant from, Instant to, Pageable pageable) {
-        var matchStage = Aggregation.match(Criteria.where("createdAt").gte(from).lte(to));
-
+        var matchStage = Aggregation.match(criteria);
         var groupStage = Aggregation.group("userId")
                 .sum("paymentAmount").as("total");
 
-        long skip = pageable.getOffset();
-        long limit = pageable.getPageSize() + 1L;
+        var countStage = Aggregation.count().as("totalRows");
+        Aggregation countAggregation = Aggregation.newAggregation(matchStage, groupStage, countStage);
+        AggregationResults<org.bson.Document> countResults = mongoTemplate.aggregate(
+                countAggregation, PaymentEntity.class, org.bson.Document.class);
 
-        var skipStage = Aggregation.skip(skip);
-        var limitStage = Aggregation.limit(limit);
+        long totalElements = countResults.getUniqueMappedResult() != null
+                ? ((Number) countResults.getUniqueMappedResult().get("totalRows")).longValue()
+                : 0L;
+
+        var skipStage = Aggregation.skip(pageable.getOffset());
+        var limitStage = Aggregation.limit(pageable.getPageSize());
 
         Aggregation aggregation = Aggregation.newAggregation(
                 matchStage,
@@ -100,17 +142,23 @@ public class PaymentServiceImpl implements PaymentService {
                 skipStage,
                 limitStage);
 
-        AggregationResults<AdminSumProjection> results = mongoTemplate.aggregate(
-                aggregation, PaymentEntity.class, AdminSumProjection.class);
+        AggregationResults<UserSumProjection> results = mongoTemplate.aggregate(
+                aggregation, PaymentEntity.class, UserSumProjection.class);
 
-        List<AdminSumProjection> content = results.getMappedResults();
-
-        boolean hasNext = content.size() > pageable.getPageSize();
-
-        List<AdminSumProjection> finalContent = content.stream()
-                .limit(pageable.getPageSize())
+        List<UserSumProjection> finalContent = results.getMappedResults().stream()
+                .map(this::fillUser)
                 .toList();
 
-        return new SliceImpl<>(finalContent, pageable, hasNext);
+        return new PageImpl<>(finalContent, pageable, totalElements);
+    }
+
+    private Payment fillUser(Payment payment) {
+        payment.setUser(userService.fetchById(payment.getUserId()));
+        return payment;
+    }
+
+    private UserSumProjection fillUser(UserSumProjection projection) {
+        projection.setUser(userService.fetchById(projection.getId()));
+        return projection;
     }
 }

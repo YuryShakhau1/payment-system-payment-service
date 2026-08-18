@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 202608160002_cached_users
+      author: yury_shakhau
+      changes:
+
+        - runCommand:
+            command: |
+              {
+                "create": "cached_users"
+              }

@@ -3,12 +3,13 @@ package by.shakhau.ps.payment.messaging.event;
 import by.shakhau.ps.payment.service.model.PaymentCard;
 import lombok.Builder;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.util.UUID;
 
-@Builder
+@NoArgsConstructor
 @Getter
 @Setter
 public class CreatePaymentEvent {
