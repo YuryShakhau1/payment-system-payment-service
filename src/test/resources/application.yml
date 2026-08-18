@@ -25,4 +25,16 @@ crypto:
   card-secret-key: ${CARD_SECRET_KEY:fF7vJ3wM3zP6qR8sT1uV4xZ6aB9cD2eF3gH6jK9mN1o}
 
 app:
-  fake-bank-url: ${EXTERNAL_BANK_URL:http://localhost}:${EXTERNAL_BANK_PORT:8085}
+  fake-bank-url: http://localhost:${EXTERNAL_BANK_PORT:8085}
+
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+
+  endpoints:
+    web:
+      exposure:
+        include: health,info
