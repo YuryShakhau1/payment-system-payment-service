@@ -4,6 +4,8 @@ import by.shakhau.ps.payment.controller.filter.AuthenticationFilter;
 import by.shakhau.ps.payment.repository.PaymentRepository;
 import by.shakhau.ps.payment.repository.entity.PaymentEntity;
 import by.shakhau.ps.payment.repository.entity.PaymentStatus;
+import com.github.dockerjava.api.model.ExposedPort;
+import com.github.dockerjava.api.model.Ports;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,15 +14,13 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
 import org.springframework.test.annotation.DirtiesContext;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
-import org.testcontainers.containers.MongoDBContainer;
+import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
 
@@ -31,7 +31,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureMockMvc
-@Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class PaymentControllerIT {
 
@@ -42,15 +41,14 @@ class PaymentControllerIT {
     private PaymentRepository paymentRepository;
 
     @Container
-    private static final MongoDBContainer mongoDB = new MongoDBContainer("mongo:8.0");
+    private static final GenericContainer<?> mongoDB = new GenericContainer<>("mongo:8.0")
+            .withEnv("MONGO_INITDB_ROOT_USERNAME", "db_username")
+            .withEnv("MONGO_INITDB_ROOT_PASSWORD", "db_password")
+            .withCreateContainerCmdModifier(cmd -> cmd.getHostConfig().withPortBindings(
+                    new Ports(new ExposedPort(27017), Ports.Binding.bindPort(27017))));
 
     static {
         mongoDB.start();
-    }
-
-    @DynamicPropertySource
-    static void setMongoProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.data.mongodb.uri", mongoDB::getReplicaSetUrl);
     }
 
     private UUID userId;
@@ -71,7 +69,7 @@ class PaymentControllerIT {
     }
 
     @Test
-    void shouldReturnPaymentsListWhenFindByCriteria() throws Exception {
+    void shouldReturnPaymentsPageWhenFindByCriteria() throws Exception {
         var payment = PaymentEntity.builder()
                 .id(UUID.randomUUID())
                 .userId(userId)
@@ -82,15 +80,25 @@ class PaymentControllerIT {
                 .build();
         paymentRepository.save(payment);
 
+        String fromStr = now.minus(1, ChronoUnit.DAYS).toString();
+        String toStr = now.plus(1, ChronoUnit.DAYS).toString();
+
         mockMvc.perform(get("/payments")
-                        .param("userId", userId.toString())
+                        .param("from", fromStr)
+                        .param("to", toStr)
                         .param("orderId", orderId.toString())
                         .param("status", PaymentStatus.getBeginStatus().name())
+                        .param("page", "0")
+                        .param("size", "10")
+                        .with(SecurityMockMvcRequestPostProcessors.user(userPrincipal))
                         .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(1)))
-                .andExpect(jsonPath("$[0].orderId").value(orderId.toString()))
-                .andExpect(jsonPath("$[0].status").value(PaymentStatus.getBeginStatus().name()));
+                .andExpect(status().isOk()) // Теперь вернет 200 OK
+                .andExpect(jsonPath("$.content", hasSize(1)))
+                .andExpect(jsonPath("$.content[0].orderId").value(orderId.toString()))
+                .andExpect(jsonPath("$.content[0].status").value(PaymentStatus.getBeginStatus().name()))
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.totalPages").value(1))
+                .andExpect(jsonPath("$.number").value(0));
     }
 
     @Test
@@ -113,16 +121,24 @@ class PaymentControllerIT {
                 .paymentAmount(BigDecimal.valueOf(300.00))
                 .build();
 
-        paymentRepository.saveAll(java.util.List.of(payment, otherPayment));
+        paymentRepository.saveAll(List.of(payment, otherPayment));
+
+        String fromStr = now.minus(1, ChronoUnit.DAYS).toString();
+        String toStr = now.plus(1, ChronoUnit.DAYS).toString();
 
         mockMvc.perform(get("/payments/me")
+                        .param("from", fromStr)
+                        .param("to", toStr)
                         .param("status", PaymentStatus.getBeginStatus().name())
+                        .param("page", "0")
+                        .param("size", "10")
                         .with(SecurityMockMvcRequestPostProcessors.user(userPrincipal))
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(2)))
-                .andExpect(jsonPath("$[0].paymentAmount").value(1200.00))
-                .andExpect(jsonPath("$[1].paymentAmount").value(300.00));
+                .andExpect(jsonPath("$.content", hasSize(1)))
+                .andExpect(jsonPath("$.content[0].paymentAmount").value(1200.00))
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.totalPages").value(1));
     }
 
     @Test
@@ -152,8 +168,9 @@ class PaymentControllerIT {
                         .with(SecurityMockMvcRequestPostProcessors.user(userPrincipal))
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(1)))
-                .andExpect(jsonPath("$[0].total").value(301.00));
+                .andExpect(jsonPath("$.content", hasSize(1)))
+                .andExpect(jsonPath("$.content[0].total").value(301));
+        ;
     }
 
     @Test

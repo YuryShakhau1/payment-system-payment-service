@@ -1,12 +1,13 @@
 package by.shakhau.ps.payment.service.impl;
 
 import by.shakhau.ps.payment.repository.PaymentRepository;
-import by.shakhau.ps.payment.repository.entity.AdminSumProjection;
 import by.shakhau.ps.payment.repository.entity.PaymentEntity;
 import by.shakhau.ps.payment.repository.entity.PaymentStatus;
 import by.shakhau.ps.payment.repository.entity.UserSumProjection;
+import by.shakhau.ps.payment.service.UserService;
 import by.shakhau.ps.payment.service.mapper.PaymentMapper;
 import by.shakhau.ps.payment.service.model.Payment;
+import by.shakhau.ps.payment.service.model.User;
 import org.bson.Document;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -14,9 +15,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Slice;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.aggregation.Aggregation;
 import org.springframework.data.mongodb.core.aggregation.AggregationResults;
@@ -24,14 +25,16 @@ import org.springframework.data.mongodb.core.query.Query;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -45,6 +48,9 @@ class PaymentServiceImplTest {
     private PaymentRepository repository;
 
     @Mock
+    private UserService userService;
+
+    @Mock
     private MongoTemplate mongoTemplate;
 
     @InjectMocks
@@ -55,6 +61,7 @@ class PaymentServiceImplTest {
     private Instant from;
     private Instant to;
     private BigDecimal amount;
+    private User user;
 
     @BeforeEach
     void setUp() {
@@ -63,6 +70,12 @@ class PaymentServiceImplTest {
         from = Instant.now().minusSeconds(3600);
         to = Instant.now();
         amount = BigDecimal.valueOf(1500.00);
+        user = User.builder()
+                .id(userId)
+                .email("john_doe@mail.com")
+                .firstName("John")
+                .lastName("Doe")
+                .build();
     }
 
     @Test
@@ -116,8 +129,11 @@ class PaymentServiceImplTest {
     }
 
     @Test
-    void shouldReturnMappedPaymentsListWhenFindByCriteria() {
+    void shouldReturnMappedPaymentsPageWhenFindByCriteria() {
         PaymentStatus status = PaymentStatus.getBeginStatus();
+        Pageable pageable = PageRequest.of(0, 10);
+        Instant from = Instant.now().minus(1, ChronoUnit.DAYS);
+        Instant to = Instant.now();
 
         var entity = PaymentEntity.builder()
                 .id(UUID.randomUUID())
@@ -127,7 +143,7 @@ class PaymentServiceImplTest {
                 .paymentAmount(amount)
                 .build();
 
-        Payment model = Payment.builder()
+        var model = Payment.builder()
                 .id(entity.getId())
                 .orderId(orderId)
                 .userId(userId)
@@ -135,56 +151,82 @@ class PaymentServiceImplTest {
                 .paymentAmount(amount)
                 .build();
 
+        when(mongoTemplate.count(any(Query.class), eq(PaymentEntity.class))).thenReturn(1L);
         when(mongoTemplate.find(any(Query.class), eq(PaymentEntity.class))).thenReturn(List.of(entity));
         when(mapper.toModel(entity)).thenReturn(model);
+        when(userService.fetchById(userId)).thenReturn(user);
 
-        List<Payment> result = paymentService.findByCriteria(userId, orderId, status);
+        Page<Payment> result = paymentService.findByCriteria(from, to, userId, orderId, status, pageable);
 
         assertNotNull(result);
-        assertEquals(1, result.size());
-        assertEquals(model, result.get(0));
+        assertEquals(1, result.getTotalElements());
+        assertEquals(1, result.getContent().size());
+        assertEquals(model, result.getContent().getFirst());
 
+        verify(mongoTemplate).count(any(Query.class), eq(PaymentEntity.class));
         verify(mongoTemplate).find(any(Query.class), eq(PaymentEntity.class));
         verify(mapper).toModel(entity);
     }
 
     @Test
     void shouldReturnUserSumProjectionsListWhenGetUserTotalSum() {
-        UserSumProjection projection = new UserSumProjection(BigDecimal.valueOf(3500.00));
+        Pageable pageable = PageRequest.of(0, 10);
+        var projection = new UserSumProjection(userId, null, BigDecimal.valueOf(3500.00));
+
+        Document countDoc = new Document("totalRows", 1);
+        AggregationResults<Document> countResults =
+                new AggregationResults<>(List.of(countDoc), new Document());
 
         AggregationResults<UserSumProjection> aggregationResults =
                 new AggregationResults<>(List.of(projection), new Document());
 
-        when(mongoTemplate.aggregate(any(Aggregation.class), eq(PaymentEntity.class), eq(UserSumProjection.class)))
-                .thenReturn(aggregationResults);
+        doReturn(countResults)
+                .doReturn(aggregationResults)
+                .when(mongoTemplate).aggregate(any(Aggregation.class), eq(PaymentEntity.class), any());
 
-        List<UserSumProjection> result = paymentService.getUserTotalSum(userId, from, to);
+        when(userService.fetchById(userId)).thenReturn(user);
+
+        Page<UserSumProjection> result = paymentService.getTotalSum(from, to, userId, PaymentStatus.SUCCESS, pageable);
 
         assertNotNull(result);
-        assertEquals(1, result.size());
-        assertEquals(projection.getTotal(), result.get(0).getTotal());
+        assertEquals(1, result.getTotalElements());
+        assertEquals(1, result.getTotalPages());
+        assertEquals(1, result.getContent().size());
+        assertEquals(projection.getTotal(), result.getContent().getFirst().getTotal());
+        assertEquals(user, result.getContent().getFirst().getUser());
 
-        verify(mongoTemplate).aggregate(any(Aggregation.class), eq(PaymentEntity.class), eq(UserSumProjection.class));
+        verify(mongoTemplate, times(2)).aggregate(any(Aggregation.class), eq(PaymentEntity.class), any());
+        verify(userService).fetchById(userId);
     }
 
     @Test
-    void shouldReturnPagedSliceOfAdminSumProjectionsWhenGetTotalSumForAllUsers() {
+    void shouldReturnPagedSliceOfAdminSumProjectionsWhenGetTotalSum() {
         Pageable pageable = PageRequest.of(0, 10);
-        AdminSumProjection projection = new AdminSumProjection(userId, BigDecimal.valueOf(5000.00));
+        var projection = new UserSumProjection(userId, null, BigDecimal.valueOf(5000.00));
 
-        AggregationResults<AdminSumProjection> aggregationResults =
+        Document countDoc = new Document("totalRows", 1);
+        AggregationResults<Document> countResults =
+                new AggregationResults<>(List.of(countDoc), new Document());
+
+        AggregationResults<UserSumProjection> aggregationResults =
                 new AggregationResults<>(List.of(projection), new Document());
 
-        when(mongoTemplate.aggregate(any(Aggregation.class), eq(PaymentEntity.class), eq(AdminSumProjection.class)))
-                .thenReturn(aggregationResults);
+        doReturn(countResults)
+                .doReturn(aggregationResults)
+                .when(mongoTemplate).aggregate(any(Aggregation.class), eq(PaymentEntity.class), any());
 
-        Slice<AdminSumProjection> result = paymentService.getTotalSumForAllUsers(from, to, pageable);
+        when(userService.fetchById(userId)).thenReturn(user);
+
+        Page<UserSumProjection> result = paymentService.getTotalSum(from, to, null, PaymentStatus.SUCCESS, pageable);
 
         assertNotNull(result);
+        assertEquals(1, result.getTotalElements());
+        assertEquals(1, result.getTotalPages());
         assertEquals(1, result.getContent().size());
-        assertEquals(projection.getTotal(), result.getContent().get(0).getTotal());
-        assertFalse(result.hasNext());
+        assertEquals(projection.getTotal(), result.getContent().getFirst().getTotal());
+        assertEquals(user, result.getContent().getFirst().getUser());
 
-        verify(mongoTemplate).aggregate(any(Aggregation.class), eq(PaymentEntity.class), eq(AdminSumProjection.class));
+        verify(mongoTemplate, times(2)).aggregate(any(Aggregation.class), eq(PaymentEntity.class), any());
+        verify(userService).fetchById(userId);
     }
 }

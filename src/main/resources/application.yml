@@ -1,25 +1,40 @@
 spring:
-  data:
-    mongodb:
-      host: localhost
-      port: ${PAYMENT_SERVICE_MONGO_DB_PORT}
-      database: ${PAYMENT_SERVICE_MONGO_DB_NAME}
-      username: ${PAYMENT_SERVICE_MONGO_DB_USERNAME}
-      password: ${PAYMENT_SERVICE_MONGO_DB_PASSWORD}
-      authentication-database: admin
-
   liquibase:
     change-log: db/changelog/db.changelog-master.yml
-    url: mongodb://localhost:${PAYMENT_SERVICE_MONGO_DB_PORT}/${PAYMENT_SERVICE_MONGO_DB_NAME}?authSource=admin
+    url: mongodb://${PAYMENT_SERVICE_MONGO_DB_HOST}:${PAYMENT_SERVICE_MONGO_DB_PORT}/${PAYMENT_SERVICE_MONGO_DB_NAME}?authSource=admin
     user: ${PAYMENT_SERVICE_MONGO_DB_USERNAME}
     password: ${PAYMENT_SERVICE_MONGO_DB_PASSWORD}
     enabled: true
 
+  kafka:
+    bootstrap-servers: ${KAFKA_HOST_PORT}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    listener:
+      ack-mode: manual_immediate
+      immediate-stop: true
+
   config:
-    import: optional:file:../.env[.properties]
+    import: optional:file:.env[.properties]
 
 crypto:
   card-secret-key: ${CARD_SECRET_KEY}
 
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
 app:
-  fake-bank-url: ${EXTERNAL_BANK_URL}:${EXTERNAL_BANK_PORT}
+  user-service-url: ${USER_SERVICE_URL}

@@ -1,6 +1,7 @@
 package by.shakhau.ps.payment.messaging.consumer;
 
 import by.shakhau.ps.payment.client.ExternalPaymentClient;
+import by.shakhau.ps.payment.client.dto.PaymentCardFull;
 import by.shakhau.ps.payment.client.dto.PaymentRequest;
 import by.shakhau.ps.payment.client.dto.PaymentStatus;
 import by.shakhau.ps.payment.client.mapper.PaymentCardDtoMapper;
@@ -47,11 +48,14 @@ public class CreatePaymentConsumer {
         PaymentCard card = event.getCard();
         card.setNumber(encryptor.decrypt(card.getNumber()));
         card.setHolder(encryptor.decrypt(card.getHolder()));
+        PaymentCardFull fullCardRequest = paymentCardDtoMapper.toDto(
+                encryptor.decrypt(event.getCvv()), card);
 
-        PaymentStatus status = externalPaymentClient.processPayment(PaymentRequest.builder()
-                .card(paymentCardDtoMapper.toDto(encryptor.encrypt(event.getCvv()), event.getCard()))
-                .paymentAmount(event.getPaymentAmount())
-                .build());
+        PaymentStatus status = externalPaymentClient.processPayment(
+                PaymentRequest.builder()
+                        .card(fullCardRequest)
+                        .paymentAmount(event.getPaymentAmount())
+                        .build());
 
         if ("SUCCESS".equals(status.getStatus())) {
             payment.setStatus(SUCCESS);
@@ -59,10 +63,12 @@ public class CreatePaymentConsumer {
             payment.setStatus(FAILED);
         }
 
+        paymentService.update(payment);
+
         paymentFinishedProducer.send(PaymentFinishedEvent.builder()
-                        .paymentId(payment.getId())
-                        .paymentId(payment.getOrderId())
-                        .paymentStatus(status.getStatus())
+                .paymentId(payment.getId())
+                .orderId(payment.getOrderId())
+                .paymentStatus(status.getStatus())
                 .build());
 
         ack.acknowledge();

@@ -20,4 +20,6 @@ public class Payment {
     private PaymentStatus status;
     private Instant createdAt;
     private BigDecimal paymentAmount;
+
+    private User user;
 }
